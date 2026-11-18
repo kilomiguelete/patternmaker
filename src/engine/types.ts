@@ -78,6 +78,12 @@ export type HandleAxis = {
   key: string
   scale: number
   offset?: number
+  /**
+   * Direccion (unitaria) sobre la que se mide la coordenada. Por defecto es
+   * el propio eje X o Y. Sirve para vertices que se mueven en diagonal, como
+   * la boca de manga en el croquis, que va en el angulo de la manga.
+   */
+  dir?: Point
 }
 
 /** Vertice que el usuario puede arrastrar sobre el patron. */

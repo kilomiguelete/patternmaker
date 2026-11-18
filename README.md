@@ -35,9 +35,15 @@ piezas, las curvas, los márgenes de costura y el marcador.
   se reajusta sola y el escalado de tallas se mantiene.
 - Arrastrando en la talla base se mueve toda la gama por el salto; arrastrando en otra talla se
   edita sólo esa, y la celda queda marcada.
+- En el patrón los vértices se muestran con "Editar vértices" (así queda limpio para exportar);
+  en la ficha técnica están siempre, que para eso es la vista de forma.
 
 **Ficha técnica**
 - Croquis plano de la prenda dibujado desde las mismas medidas, con cotas.
+- **También se edita arrastrando**: estiras el bajo, abres el hombro, alargas la manga o
+  subes la capucha sobre el dibujo de la prenda, y la tabla y el patrón se recalculan.
+- El vértice de la bocamanga mide sobre el eje inclinado de la manga y su perpendicular, así
+  que un solo gesto da largo y ancho de manga.
 
 **Exportar**
 - **SVG** a escala 1:1 con cuadro de control.

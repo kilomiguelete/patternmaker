@@ -541,3 +541,29 @@ body {
   .bottom-nav button span { font-size: 13px; }
   .handle-readout { bottom: 10px; }
 }
+
+/* ---------------------------------------------------------- croquis editable */
+
+.flat-wrap { position: relative; }
+.flat-svg { touch-action: none; }
+
+.flat-handle .handle-dot {
+  fill: var(--accent);
+  stroke: var(--ink);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.flat-handle:hover .handle-dot,
+.flat-handle.handle-active .handle-dot { fill: #fff; }
+
+.flat-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  color: #8a8f99;
+  pointer-events: none;
+}

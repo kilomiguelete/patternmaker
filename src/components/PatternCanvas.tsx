@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { dimGeometry, grainline } from '../engine/annotate'
 import type { LayoutResult } from '../engine/layout'
-import type { Handle, Piece } from '../engine/types'
 import { formatMm, type Unit } from '../engine/units'
+import { useHandleDrag, type HandleEdit } from '../hooks/useHandleDrag'
 import type { ViewOptions } from '../state/store'
 
-export type HandleEdit = { key: string; value: number }
+export type { HandleEdit }
 
 type Props = {
   layout: LayoutResult
@@ -15,26 +15,6 @@ type Props = {
   onSelect: (id: string | null) => void
   /** Medidas que resultan de arrastrar un vertice. */
   onHandleDrag?: (edits: HandleEdit[]) => void
-}
-
-type DragState = {
-  handle: Handle
-  piece: string
-  /** Puntero que inicio el arrastre; se ignoran los demas. */
-  pointerId: number
-  /** Posicion del puntero al empezar, en px de pantalla. */
-  originX: number
-  originY: number
-  /** Coordenadas del vertice al empezar, en mm. */
-  startX: number
-  startY: number
-  scale: number
-}
-
-/** Aplica el eje de un vertice: medida = scale * coordenada + offset. */
-function axisValue(axis: Handle['x'], coord: number): number {
-  if (!axis) return NaN
-  return axis.scale * coord + (axis.offset ?? 0)
 }
 
 const PAD = 60
@@ -66,8 +46,6 @@ function useCoarsePointer(): boolean {
 export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandleDrag }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cam, setCam] = useState<Camera>({ z: 1, x: 0, y: 0 })
-  const [handleDrag, setHandleDrag] = useState<DragState | null>(null)
-  const [hint, setHint] = useState<string | null>(null)
   const [panning, setPanning] = useState(false)
   const coarse = useCoarsePointer()
 
@@ -78,6 +56,13 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
   const contentW = layout.width + PAD * 2
   const contentH = layout.height + PAD * 2
   const scale = cam.z
+
+  const {
+    start: startHandleDrag,
+    hint,
+    activeId,
+    dragging: handleDragging,
+  } = useHandleDrag({ unit, onEdit: onHandleDrag, pxPerMm: () => cam.z })
 
   const fit = useCallback(() => {
     const el = wrapRef.current
@@ -135,7 +120,7 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
   // ---------------------------------------------------------- gestos
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (handleDrag) return
+    if (handleDragging) return
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     e.currentTarget.setPointerCapture?.(e.pointerId)
 
@@ -200,67 +185,6 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
     }
   }
 
-  // ---------------------------------------------------------- vertices
-
-  const startHandleDrag = useCallback(
-    (e: React.PointerEvent, piece: Piece, handle: Handle) => {
-      if (!onHandleDrag) return
-      e.stopPropagation()
-      e.preventDefault()
-      setHandleDrag({
-        handle,
-        piece: piece.id,
-        pointerId: e.pointerId,
-        originX: e.clientX,
-        originY: e.clientY,
-        startX: handle.p.x,
-        startY: handle.p.y,
-        scale,
-      })
-    },
-    [onHandleDrag, scale],
-  )
-
-  useEffect(() => {
-    if (!handleDrag || !onHandleDrag) return
-
-    const move = (e: PointerEvent) => {
-      if (e.pointerId !== handleDrag.pointerId) return
-      const { handle, originX, originY, startX, startY, scale: s } = handleDrag
-      const edits: HandleEdit[] = []
-      const labels: string[] = []
-
-      if (handle.x) {
-        const value = axisValue(handle.x, startX + (e.clientX - originX) / s)
-        edits.push({ key: handle.x.key, value })
-        labels.push(formatMm(Math.abs(value), unit))
-      }
-      if (handle.y) {
-        const value = axisValue(handle.y, startY + (e.clientY - originY) / s)
-        edits.push({ key: handle.y.key, value })
-        labels.push(formatMm(Math.abs(value), unit))
-      }
-      if (edits.length) {
-        onHandleDrag(edits)
-        setHint(`${handle.label}: ${labels.join(' × ')}`)
-      }
-    }
-
-    const up = (e: PointerEvent) => {
-      if (e.pointerId !== handleDrag.pointerId) return
-      setHandleDrag(null)
-      setHint(null)
-    }
-
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', up)
-    return () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
-    }
-  }, [handleDrag, onHandleDrag, unit])
 
   return (
     <div className="canvas-shell">
@@ -283,7 +207,7 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
           e.preventDefault()
           zoomAt(cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY)
         }}
-        style={{ cursor: handleDrag ? 'crosshair' : panning ? 'grabbing' : 'grab' }}
+        style={{ cursor: handleDragging ? 'crosshair' : panning ? 'grabbing' : 'grab' }}
       >
         <svg
           width={contentW * scale}
@@ -382,8 +306,8 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
                   (p.piece.handles ?? []).map((h) => (
                     <g
                       key={h.id}
-                      className={`handle${handleDrag?.handle.id === h.id && handleDrag.piece === p.piece.id ? ' handle-active' : ''}`}
-                      onPointerDown={(e) => startHandleDrag(e, p.piece, h)}
+                      className={`handle${activeId === `${p.piece.id}:${h.id}` ? ' handle-active' : ''}`}
+                      onPointerDown={(e) => startHandleDrag(e, `${p.piece.id}:${h.id}`, h)}
                     >
                       <circle cx={h.p.x} cy={h.p.y} r={(coarse ? 26 : 14) / scale} className="handle-hit" />
                       <circle cx={h.p.x} cy={h.p.y} r={(coarse ? 8 : 5) / scale} className="handle-dot" />

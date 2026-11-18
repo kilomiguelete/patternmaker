@@ -5,6 +5,8 @@ import { GARMENT_LIST, SIZES, type GarmentKind } from '../measurements'
 import { contourLength, flattenWithEdges, polygonArea } from '../geometry'
 import { layoutPieces, measurePiece } from '../layout'
 import { initialState, reducer } from '../../state/store'
+import { buildFlat } from '../flats'
+import type { Handle } from '../types'
 
 function measurementsFor(kind: GarmentKind, size: (typeof SIZES)[number] = 'M') {
   const base = defaultBaseValues(kind)
@@ -169,34 +171,61 @@ describe('edicion de la tabla', () => {
 })
 
 describe('vertices arrastrables', () => {
-  it('cada eje vuelve a dar la medida de la que salio', () => {
+  /** Coordenada del vertice sobre la direccion del eje. */
+  const project = (p: { x: number; y: number }, axis: { dir?: { x: number; y: number } }, fallback: 'x' | 'y') => {
+    const d = axis.dir ?? (fallback === 'x' ? { x: 1, y: 0 } : { x: 0, y: 1 })
+    return p.x * d.x + p.y * d.y
+  }
+
+  const checkHandles = (handles: Handle[], m: Record<string, number>, where: string) => {
+    for (const h of handles) {
+      for (const [axis, fallback] of [
+        [h.x, 'x'],
+        [h.y, 'y'],
+      ] as const) {
+        if (!axis) continue
+        const recovered = axis.scale * project(h.p, axis, fallback) + (axis.offset ?? 0)
+        expect(recovered, `${where}/${h.id} -> ${axis.key}`).toBeCloseTo(m[axis.key], 1)
+      }
+    }
+  }
+
+  it('cada eje del patron vuelve a dar la medida de la que salio', () => {
     for (const garment of GARMENT_LIST) {
       const m = measurementsFor(garment.kind)
       for (const piece of draft(garment.kind, m).pieces) {
-        for (const h of piece.handles ?? []) {
-          for (const [coord, axis] of [
-            [h.p.x, h.x],
-            [h.p.y, h.y],
-          ] as const) {
-            if (!axis) continue
-            const recovered = axis.scale * coord + (axis.offset ?? 0)
-            expect(
-              Math.abs(recovered - m[axis.key]),
-              `${garment.kind}/${piece.id}/${h.id} -> ${axis.key}`,
-            ).toBeLessThan(0.5)
-          }
-        }
+        checkHandles(piece.handles ?? [], m, `${garment.kind}/${piece.id}`)
       }
     }
   })
 
-  it('las tres prendas exponen vertices', () => {
+  it('cada eje del croquis vuelve a dar la medida de la que salio', () => {
     for (const garment of GARMENT_LIST) {
-      const total = draft(garment.kind, measurementsFor(garment.kind)).pieces.reduce(
-        (n, p) => n + (p.handles?.length ?? 0),
-        0,
-      )
-      expect(total, garment.kind).toBeGreaterThan(5)
+      const m = measurementsFor(garment.kind)
+      checkHandles(buildFlat(garment.kind, m).handles, m, `croquis/${garment.kind}`)
+    }
+  })
+
+  it('el vertice de la manga mide sobre el eje inclinado', () => {
+    const m = measurementsFor('hoodie')
+    const sleeve = buildFlat('hoodie', m).handles.find((h) => h.id === 'f-sleeve')
+    expect(sleeve?.x?.dir).toBeDefined()
+    expect(sleeve?.y?.dir).toBeDefined()
+    // Las dos direcciones son unitarias y perpendiculares entre si.
+    for (const d of [sleeve!.x!.dir!, sleeve!.y!.dir!]) {
+      expect(Math.hypot(d.x, d.y)).toBeCloseTo(1, 6)
+    }
+    const a = sleeve!.x!.dir!
+    const b = sleeve!.y!.dir!
+    expect(a.x * b.x + a.y * b.y).toBeCloseTo(0, 6)
+  })
+
+  it('las tres prendas exponen vertices en patron y croquis', () => {
+    for (const garment of GARMENT_LIST) {
+      const m = measurementsFor(garment.kind)
+      const enPatron = draft(garment.kind, m).pieces.reduce((n, p) => n + (p.handles?.length ?? 0), 0)
+      expect(enPatron, garment.kind).toBeGreaterThan(5)
+      expect(buildFlat(garment.kind, m).handles.length, garment.kind).toBeGreaterThan(3)
     }
   })
 })

@@ -169,6 +169,7 @@ export default function App() {
               measurements={measurements}
               unit={state.unit}
               showDimensions={state.view.showDimensions}
+              onHandleDrag={(edits) => dispatch({ type: 'cells', size: state.activeSize, edits })}
             />
           ) : (
             <PatternCanvas

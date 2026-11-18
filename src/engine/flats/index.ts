@@ -1,7 +1,7 @@
 import { pt } from '../geometry'
 import { polylineToPath } from '../path'
 import type { GarmentKind } from '../measurements'
-import type { Point } from '../types'
+import type { Handle, Point } from '../types'
 
 export type FlatPart = {
   id: string
@@ -20,6 +20,8 @@ export type FlatDim = {
 export type FlatDrawing = {
   parts: FlatPart[]
   dims: FlatDim[]
+  /** Vertices arrastrables sobre el dibujo de la prenda. */
+  handles: Handle[]
   box: { x: number; y: number; w: number; h: number }
 }
 
@@ -80,7 +82,9 @@ function mirrorX(points: Point[]): Point[] {
  * Manga del croquis: del hombro hacia fuera y abajo, con el ancho en plano
  * (medio contorno) medido perpendicular al eje de la manga.
  */
-function sleeveQuad(m: M, length: number, openingFlat: number, angle = 38): Point[] {
+const SLEEVE_ANGLE = 38
+
+function sleeveQuad(m: M, length: number, openingFlat: number, angle = SLEEVE_ANGLE): Point[] {
   const sw = g(m, 'shoulderWidth') / 2
   const cw = g(m, 'chestWidth') / 2
   const sp = pt(sw, g(m, 'shoulderSlope'))
@@ -94,7 +98,7 @@ function sleeveQuad(m: M, length: number, openingFlat: number, angle = 38): Poin
 }
 
 /** Puno o bocamanga: banda de alto `h` al final de la manga. */
-function cuffQuad(quad: Point[], h: number, angle = 38): Point[] {
+function cuffQuad(quad: Point[], h: number, angle = SLEEVE_ANGLE): Point[] {
   const rad = (angle * Math.PI) / 180
   const dir = pt(Math.cos(rad) * h, Math.sin(rad) * h)
   const [, endTop, endBottom] = quad
@@ -199,10 +203,86 @@ function topFlat(m: M, kind: 'tee' | 'hoodie'): FlatDrawing {
     { id: 'd-shoulder', from: pt(-g(m, 'shoulderWidth') / 2, g(m, 'shoulderSlope')), to: pt(g(m, 'shoulderWidth') / 2, g(m, 'shoulderSlope')), label: 'Hombros', offset: -45 },
   ]
 
+  // El eje de la manga va inclinado, asi que su vertice mide sobre esa
+  // direccion y su perpendicular en vez de sobre X e Y.
+  const rad = (SLEEVE_ANGLE * Math.PI) / 180
+  const axis = pt(Math.cos(rad), Math.sin(rad))
+  const normal = pt(-axis.y, axis.x)
+  const sp = pt(g(m, 'shoulderWidth') / 2, g(m, 'shoulderSlope'))
+  const cuffCorner = rightSleeve[2]
+
+  const handles: Handle[] = [
+    { id: 'f-neck', label: 'Escote delantero', p: pt(0, drop), y: { key: 'frontNeckDrop', scale: 1 } },
+    { id: 'f-hps', label: 'Ancho de cuello', p: pt(nw, 0), x: { key: 'neckWidth', scale: 2 } },
+    {
+      id: 'f-shoulder',
+      label: 'Hombro',
+      p: sp,
+      x: { key: 'shoulderWidth', scale: 2 },
+      y: { key: 'shoulderSlope', scale: 1 },
+    },
+    {
+      id: 'f-underarm',
+      label: 'Fondo de sisa',
+      p: pt(g(m, 'chestWidth') / 2, g(m, 'armholeDepth')),
+      x: { key: 'chestWidth', scale: 2 },
+      y: { key: 'armholeDepth', scale: 1 },
+    },
+    {
+      id: 'f-hem',
+      label: 'Bajo',
+      p: pt(hw, length),
+      x: { key: 'hemWidth', scale: 2 },
+      y: { key: 'bodyLength', scale: 1 },
+    },
+    {
+      // La esquina de la bocamanga lleva largo (sobre el eje de la manga) y
+      // ancho (sobre su perpendicular) en un solo gesto.
+      id: 'f-sleeve',
+      label: 'Manga',
+      p: cuffCorner,
+      x: {
+        key: 'sleeveLength',
+        scale: 1,
+        offset: -(sp.x * axis.x + sp.y * axis.y) + cuffH,
+        dir: axis,
+      },
+      y: {
+        key: 'sleeveOpening',
+        scale: 1,
+        offset: -(sp.x * normal.x + sp.y * normal.y),
+        dir: normal,
+      },
+    },
+  ]
+
+  if (isHoodie) {
+    const hh = g(m, 'hoodHeight')
+    handles.push({
+      id: 'f-hood',
+      label: 'Alto de capucha',
+      p: pt(0, -hh * 0.78),
+      y: { key: 'hoodHeight', scale: -1 / 0.78 },
+    })
+    const pw = g(m, 'pocketWidth') / 2
+    const ph = g(m, 'pocketHeight')
+    if (pw > 0 && ph > 0) {
+      const py = panelLength - 20
+      handles.push({
+        id: 'f-pocket',
+        label: 'Bolsillo canguro',
+        p: pt(pw * 0.7, py - ph),
+        x: { key: 'pocketWidth', scale: 1 / 0.35 },
+        y: { key: 'pocketHeight', scale: -1, offset: py },
+      })
+    }
+  }
+
   const reach = g(m, 'shoulderWidth') / 2 + sleeveLen + cuffH
   return {
     parts,
     dims,
+    handles,
     box: {
       x: -reach - 110,
       y: (isHoodie ? -g(m, 'hoodHeight') : 0) - 70,
@@ -269,9 +349,29 @@ function pantsFlat(m: M): FlatDrawing {
     { id: 'd-hem', from: pt(legCenter - hemHalf, hemLevel), to: pt(legCenter + hemHalf, hemLevel), label: 'Bajo', offset: 45 },
   ]
 
+  const handles: Handle[] = [
+    { id: 'p-waist', label: 'Cintura', p: pt(ww, 0), x: { key: 'waistWidth', scale: 1 } },
+    { id: 'p-hip', label: 'Cadera', p: pt(hw, hipLevel), x: { key: 'hipWidth', scale: 1 } },
+    { id: 'p-rise', label: 'Tiro delantero', p: pt(0, rise), y: { key: 'frontRise', scale: 1 } },
+    {
+      id: 'p-knee',
+      label: 'Rodilla',
+      p: pt(legCenter + kneeHalf, kneeLevel),
+      x: { key: 'kneeWidth', scale: 2, offset: -hw },
+    },
+    {
+      id: 'p-hem',
+      label: 'Bajo',
+      p: pt(legCenter + hemHalf, hemLevel),
+      x: { key: 'hemWidth', scale: 2, offset: -hw },
+      y: { key: 'inseam', scale: 1, offset: -rise },
+    },
+  ]
+
   return {
     parts,
     dims,
+    handles,
     box: { x: -hw - 120, y: -80, w: (hw + 120) * 2, h: hemLevel + 160 },
   }
 }
