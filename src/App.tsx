@@ -13,11 +13,21 @@ import { useProject } from './state/store'
 
 type Tab = 'pattern' | 'flat' | 'chart'
 
+/** En movil solo cabe un panel a la vez; se eligen desde la barra inferior. */
+type MobilePanel = 'chart' | 'preview' | 'summary'
+
+const MOBILE_PANELS: { id: MobilePanel; label: string; icon: string }[] = [
+  { id: 'chart', label: 'Medidas', icon: '▦' },
+  { id: 'preview', label: 'Patron', icon: '✎' },
+  { id: 'summary', label: 'Piezas', icon: '☰' },
+]
+
 export default function App() {
   const { state, dispatch, measurements, result, layout } = useProject()
   const [tab, setTab] = useState<Tab>('pattern')
   const [page, setPage] = useState<PageSize>('A4')
   const [error, setError] = useState<string | null>(null)
+  const [panel, setPanel] = useState<MobilePanel>('preview')
 
   const garment = GARMENTS[state.garment]
   const fileBase = `${slug(state.name)}-${garment.kind}-${state.activeSize}`
@@ -98,7 +108,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="layout">
+      <main className={`layout mobile-${panel}`}>
         <section className="panel panel-chart">
           <div className="panel-head">
             <h2>Tabla de medidas · {garment.name}</h2>
@@ -184,6 +194,20 @@ export default function App() {
           onSelect={(id) => dispatch({ type: 'selectPiece', id })}
         />
       </main>
+
+      <nav className="bottom-nav" aria-label="Secciones">
+        {MOBILE_PANELS.map((item) => (
+          <button
+            key={item.id}
+            className={panel === item.id ? 'on' : ''}
+            aria-current={panel === item.id}
+            onClick={() => setPanel(item.id)}
+          >
+            <span aria-hidden="true">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }

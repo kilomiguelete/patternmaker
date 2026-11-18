@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import { MOBILE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { GARMENT_LIST, SIZES } from '../engine/measurements'
 import type { Unit } from '../engine/units'
 import type { Action, State } from '../state/store'
@@ -14,6 +15,32 @@ const UNITS: Unit[] = ['cm', 'mm', 'in']
 
 export function Toolbar({ state, dispatch, onExport, onImport }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
+  // En movil las opciones secundarias van plegadas; en escritorio el CSS
+  // las muestra siempre.
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const isMobile = useMediaQuery(MOBILE_QUERY)
+
+  // En movil el nombre del proyecto y la unidad se consultan poco, asi que
+  // bajan al panel de opciones y dejan sitio al dibujo.
+  const projectField = (
+    <label className="field">
+      <span>Proyecto</span>
+      <input value={state.name} onChange={(e) => dispatch({ type: 'name', name: e.target.value })} />
+    </label>
+  )
+
+  const unitField = (
+    <label className="field field-narrow">
+      <span>Unidad</span>
+      <select value={state.unit} onChange={(e) => dispatch({ type: 'unit', unit: e.target.value as Unit })}>
+        {UNITS.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 
   return (
     <header className="toolbar">
@@ -26,10 +53,7 @@ export function Toolbar({ state, dispatch, onExport, onImport }: Props) {
       </div>
 
       <div className="toolbar-group">
-        <label className="field">
-          <span>Proyecto</span>
-          <input value={state.name} onChange={(e) => dispatch({ type: 'name', name: e.target.value })} />
-        </label>
+        {!isMobile && projectField}
 
         <div className="field">
           <span>Prenda</span>
@@ -58,19 +82,25 @@ export function Toolbar({ state, dispatch, onExport, onImport }: Props) {
           </div>
         </div>
 
-        <label className="field field-narrow">
-          <span>Unidad</span>
-          <select value={state.unit} onChange={(e) => dispatch({ type: 'unit', unit: e.target.value as Unit })}>
-            {UNITS.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!isMobile && unitField}
       </div>
 
-      <div className="toolbar-group toolbar-right">
+      <button
+        className="toolbar-toggle"
+        aria-expanded={optionsOpen}
+        onClick={() => setOptionsOpen((v) => !v)}
+      >
+        {optionsOpen ? 'Cerrar opciones' : 'Opciones y exportar'}
+      </button>
+
+      <div className={`toolbar-group toolbar-right${optionsOpen ? ' open' : ''}`}>
+        {isMobile && (
+          <div className="sheet-fields">
+            {projectField}
+            {unitField}
+          </div>
+        )}
+
         <div className="toggles">
           <label>
             <input

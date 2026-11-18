@@ -58,6 +58,16 @@ por la API de descargas del anfitrion.
 | Hoodie | delantero, espalda, manga, capucha (×2), bolsillo canguro, rib de bajo, puños, cinta de cuello |
 | Pantalón / Jogger | pierna delantera, pierna trasera, cinturilla, bolsas de bolsillo |
 
+## En el móvil
+
+La interfaz se adapta a pantallas pequeñas: un panel a la vez (Medidas / Patrón / Piezas)
+con barra inferior, el resto de controles plegados en "Opciones y exportar", y la tabla con la
+columna de medidas fija mientras deslizas entre tallas.
+
+El lienzo responde al tacto: desliza para mover, **pellizca para el zoom** y arrastra los
+vértices con el dedo. Como en táctil no hay tooltip, tocar el nombre de una medida despliega
+cómo se toma.
+
 ## Empezar
 
 ```bash

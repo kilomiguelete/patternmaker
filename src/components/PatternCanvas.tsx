@@ -20,6 +20,8 @@ type Props = {
 type DragState = {
   handle: Handle
   piece: string
+  /** Puntero que inicio el arrastre; se ignoran los demas. */
+  pointerId: number
   /** Posicion del puntero al empezar, en px de pantalla. */
   originX: number
   originY: number
@@ -36,37 +38,179 @@ function axisValue(axis: Handle['x'], coord: number): number {
 }
 
 const PAD = 60
+const MIN_ZOOM = 0.05
+const MAX_ZOOM = 8
+
+type Camera = { z: number; x: number; y: number }
+
+type Gesture =
+  | { kind: 'pan'; id: number; startX: number; startY: number; cam: Camera }
+  | { kind: 'pinch'; startDist: number; startZoom: number; u: number; v: number }
+
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
+
+/** true en pantallas tactiles, donde los blancos tienen que ser mas grandes. */
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(false)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia('(pointer: coarse)')
+    const update = () => setCoarse(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+  return coarse
+}
 
 export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandleDrag }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [drag, setDrag] = useState<{ x: number; y: number; px: number; py: number } | null>(null)
+  const [cam, setCam] = useState<Camera>({ z: 1, x: 0, y: 0 })
   const [handleDrag, setHandleDrag] = useState<DragState | null>(null)
   const [hint, setHint] = useState<string | null>(null)
+  const [panning, setPanning] = useState(false)
+  const coarse = useCoarsePointer()
+
+  /** Punteros activos sobre el lienzo, para distinguir arrastre de pellizco. */
+  const pointers = useRef(new Map<number, { x: number; y: number }>())
+  const gesture = useRef<Gesture | null>(null)
 
   const contentW = layout.width + PAD * 2
   const contentH = layout.height + PAD * 2
+  const scale = cam.z
 
-  // Encaje inicial y al cambiar de prenda/talla.
-  useEffect(() => {
+  const fit = useCallback(() => {
     const el = wrapRef.current
     if (!el) return
-    const fit = Math.min(el.clientWidth / contentW, el.clientHeight / contentH)
-    setZoom(Number.isFinite(fit) && fit > 0 ? fit * 0.96 : 1)
-    setPan({ x: 0, y: 0 })
+    const f = Math.min(el.clientWidth / contentW, el.clientHeight / contentH)
+    setCam({ z: Number.isFinite(f) && f > 0 ? clampZoom(f * 0.94) : 1, x: 0, y: 0 })
   }, [contentW, contentH])
 
-  const scale = zoom
+  // Encaje inicial y al cambiar de prenda, de talla o de tamano de ventana.
+  useEffect(fit, [fit])
+  useEffect(() => {
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [fit])
+
+  /** Esquina superior izquierda del SVG en pantalla, para una camara dada. */
+  const svgOrigin = useCallback(
+    (c: Camera) => {
+      const r = wrapRef.current?.getBoundingClientRect()
+      if (!r) return { x: 0, y: 0, cx: 0, cy: 0 }
+      const cx = r.left + r.width / 2
+      const cy = r.top + r.height / 2
+      return { x: cx - (contentW * c.z) / 2 + c.x, y: cy - (contentH * c.z) / 2 + c.y, cx, cy }
+    },
+    [contentW, contentH],
+  )
+
+  /** Zoom manteniendo fijo el punto del patron que hay bajo (px, py). */
+  const zoomAt = useCallback(
+    (next: number, px: number, py: number) => {
+      setCam((prev) => {
+        const z = clampZoom(next)
+        const o = svgOrigin(prev)
+        const u = (px - o.x) / prev.z
+        const v = (py - o.y) / prev.z
+        return {
+          z,
+          x: px - u * z - o.cx + (contentW * z) / 2,
+          y: py - v * z - o.cy + (contentH * z) / 2,
+        }
+      })
+    },
+    [svgOrigin, contentW, contentH],
+  )
+
+  const zoomCenter = useCallback(
+    (factor: number) => {
+      const r = wrapRef.current?.getBoundingClientRect()
+      if (!r) return
+      zoomAt(cam.z * factor, r.left + r.width / 2, r.top + r.height / 2)
+    },
+    [cam.z, zoomAt],
+  )
+
+  // ---------------------------------------------------------- gestos
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (handleDrag) return
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+
+    const list = [...pointers.current.values()]
+    if (list.length === 1) {
+      gesture.current = { kind: 'pan', id: e.pointerId, startX: e.clientX, startY: e.clientY, cam }
+      setPanning(true)
+    } else if (list.length === 2) {
+      const [a, b] = list
+      const mx = (a.x + b.x) / 2
+      const my = (a.y + b.y) / 2
+      const o = svgOrigin(cam)
+      gesture.current = {
+        kind: 'pinch',
+        startDist: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+        startZoom: cam.z,
+        u: (mx - o.x) / cam.z,
+        v: (my - o.y) / cam.z,
+      }
+      setPanning(false)
+    }
+  }
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const g = gesture.current
+    if (!g) return
+
+    if (g.kind === 'pan' && g.id === e.pointerId) {
+      setCam({ z: g.cam.z, x: g.cam.x + (e.clientX - g.startX), y: g.cam.y + (e.clientY - g.startY) })
+      return
+    }
+
+    if (g.kind === 'pinch') {
+      const list = [...pointers.current.values()]
+      if (list.length < 2) return
+      const [a, b] = list
+      const dist = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y))
+      const mx = (a.x + b.x) / 2
+      const my = (a.y + b.y) / 2
+      const z = clampZoom(g.startZoom * (dist / g.startDist))
+      const r = wrapRef.current?.getBoundingClientRect()
+      if (!r) return
+      setCam({
+        z,
+        x: mx - g.u * z - (r.left + r.width / 2) + (contentW * z) / 2,
+        y: my - g.v * z - (r.top + r.height / 2) + (contentH * z) / 2,
+      })
+    }
+  }
+
+  const endPointer = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId)
+    if (pointers.current.size === 0) {
+      gesture.current = null
+      setPanning(false)
+    } else if (pointers.current.size === 1) {
+      // Al soltar un dedo del pellizco, el que queda sigue desplazando.
+      const [id, p0] = [...pointers.current.entries()][0]
+      gesture.current = { kind: 'pan', id, startX: p0.x, startY: p0.y, cam }
+    }
+  }
+
+  // ---------------------------------------------------------- vertices
 
   const startHandleDrag = useCallback(
-    (e: React.MouseEvent, piece: Piece, handle: Handle) => {
+    (e: React.PointerEvent, piece: Piece, handle: Handle) => {
       if (!onHandleDrag) return
       e.stopPropagation()
       e.preventDefault()
       setHandleDrag({
         handle,
         piece: piece.id,
+        pointerId: e.pointerId,
         originX: e.clientX,
         originY: e.clientY,
         startX: handle.p.x,
@@ -80,20 +224,19 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
   useEffect(() => {
     if (!handleDrag || !onHandleDrag) return
 
-    const move = (e: MouseEvent) => {
+    const move = (e: PointerEvent) => {
+      if (e.pointerId !== handleDrag.pointerId) return
       const { handle, originX, originY, startX, startY, scale: s } = handleDrag
       const edits: HandleEdit[] = []
       const labels: string[] = []
 
       if (handle.x) {
-        const coord = startX + (e.clientX - originX) / s
-        const value = axisValue(handle.x, coord)
+        const value = axisValue(handle.x, startX + (e.clientX - originX) / s)
         edits.push({ key: handle.x.key, value })
         labels.push(formatMm(Math.abs(value), unit))
       }
       if (handle.y) {
-        const coord = startY + (e.clientY - originY) / s
-        const value = axisValue(handle.y, coord)
+        const value = axisValue(handle.y, startY + (e.clientY - originY) / s)
         edits.push({ key: handle.y.key, value })
         labels.push(formatMm(Math.abs(value), unit))
       }
@@ -103,63 +246,50 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
       }
     }
 
-    const up = () => {
+    const up = (e: PointerEvent) => {
+      if (e.pointerId !== handleDrag.pointerId) return
       setHandleDrag(null)
       setHint(null)
     }
 
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
     return () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
     }
   }, [handleDrag, onHandleDrag, unit])
 
   return (
     <div className="canvas-shell">
       <div className="canvas-tools">
-        <button onClick={() => setZoom((z) => Math.min(6, z * 1.25))} title="Acercar">+</button>
-        <button onClick={() => setZoom((z) => Math.max(0.05, z / 1.25))} title="Alejar">−</button>
-        <button
-          onClick={() => {
-            const el = wrapRef.current
-            if (!el) return
-            setZoom(Math.min(el.clientWidth / contentW, el.clientHeight / contentH) * 0.96)
-            setPan({ x: 0, y: 0 })
-          }}
-          title="Encajar en pantalla"
-        >
-          ⤢
-        </button>
+        <button onClick={() => zoomCenter(1.3)} title="Acercar" aria-label="Acercar">+</button>
+        <button onClick={() => zoomCenter(1 / 1.3)} title="Alejar" aria-label="Alejar">−</button>
+        <button onClick={fit} title="Encajar en pantalla" aria-label="Encajar en pantalla">⤢</button>
         <span className="zoom-label">{Math.round(scale * 100)} %</span>
       </div>
 
       <div
         className="canvas-wrap"
         ref={wrapRef}
-        onMouseDown={(e) => {
-          if (handleDrag) return
-          setDrag({ x: e.clientX, y: e.clientY, px: pan.x, py: pan.y })
-        }}
-        onMouseMove={(e) => {
-          if (!drag) return
-          setPan({ x: drag.px + (e.clientX - drag.x), y: drag.py + (e.clientY - drag.y) })
-        }}
-        onMouseUp={() => setDrag(null)}
-        onMouseLeave={() => setDrag(null)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endPointer}
+        onPointerCancel={endPointer}
         onWheel={(e) => {
           if (!e.ctrlKey && !e.metaKey) return
           e.preventDefault()
-          setZoom((z) => Math.min(6, Math.max(0.05, z * (e.deltaY < 0 ? 1.1 : 1 / 1.1))))
+          zoomAt(cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY)
         }}
-        style={{ cursor: handleDrag ? 'crosshair' : drag ? 'grabbing' : 'grab' }}
+        style={{ cursor: handleDrag ? 'crosshair' : panning ? 'grabbing' : 'grab' }}
       >
         <svg
           width={contentW * scale}
           height={contentH * scale}
           viewBox={`${-PAD} ${-PAD} ${contentW} ${contentH}`}
-          style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
+          style={{ transform: `translate(${cam.x}px, ${cam.y}px)` }}
           onClick={(e) => {
             if (e.target === e.currentTarget) onSelect(null)
           }}
@@ -253,10 +383,10 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
                     <g
                       key={h.id}
                       className={`handle${handleDrag?.handle.id === h.id && handleDrag.piece === p.piece.id ? ' handle-active' : ''}`}
-                      onMouseDown={(e) => startHandleDrag(e, p.piece, h)}
+                      onPointerDown={(e) => startHandleDrag(e, p.piece, h)}
                     >
-                      <circle cx={h.p.x} cy={h.p.y} r={14 / scale} className="handle-hit" />
-                      <circle cx={h.p.x} cy={h.p.y} r={5 / scale} className="handle-dot" />
+                      <circle cx={h.p.x} cy={h.p.y} r={(coarse ? 26 : 14) / scale} className="handle-hit" />
+                      <circle cx={h.p.x} cy={h.p.y} r={(coarse ? 8 : 5) / scale} className="handle-dot" />
                       <title>
                         {h.label} — arrastra para cambiar {[h.x?.key, h.y?.key].filter(Boolean).join(' y ')}
                       </title>
@@ -293,7 +423,9 @@ export function PatternCanvas({ layout, unit, view, selected, onSelect, onHandle
       <p className="canvas-hint">
         {view.editHandles && onHandleDrag
           ? 'Arrastra un punto verde para cambiar la medida que controla · el resto del patron se recalcula solo'
-          : 'Arrastra para mover · Ctrl/⌘ + rueda para hacer zoom · clic en una pieza para ver su ficha'}
+          : coarse
+            ? 'Desliza para mover · pellizca para el zoom · toca una pieza'
+            : 'Arrastra para mover · Ctrl/⌘ + rueda para hacer zoom · clic en una pieza para ver su ficha'}
       </p>
     </div>
   )
