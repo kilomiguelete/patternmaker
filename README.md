@@ -35,6 +35,10 @@ piezas, las curvas, los márgenes de costura y el marcador.
 - **CSV** de la tabla de medidas.
 - **JSON** del proyecto completo, para guardar y volver a abrir.
 
+Las descargas usan un enlace `<a download>` normal. Si la app corre dentro de un
+visor que lo bloquea (como el de artifacts de claude.ai), pasa automaticamente
+por la API de descargas del anfitrion.
+
 ## Prendas incluidas
 
 | Prenda | Piezas |
@@ -62,6 +66,16 @@ npm run build
 ```bash
 npm test
 ```
+
+### Un solo archivo
+
+```bash
+npm run build:single
+```
+
+Genera `dist-single/index.html`: la app entera (JS y CSS incrustados) en un
+archivo que se abre con doble clic, sin servidor, y que puedes subir a cualquier
+hosting estatico o pasar por correo.
 
 ## Cómo se toman las medidas
 

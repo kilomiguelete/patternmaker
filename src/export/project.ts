@@ -33,17 +33,7 @@ export function parse(text: string): ProjectFile {
   return data as ProjectFile
 }
 
-export function download(filename: string, content: string | Blob, type = 'text/plain;charset=utf-8') {
-  const blob = typeof content === 'string' ? new Blob([content], { type }) : content
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+export { saveFile } from './save'
 
 export function slug(s: string): string {
   return s

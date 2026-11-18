@@ -7,7 +7,7 @@ import { Toolbar } from './components/Toolbar'
 import { GARMENTS } from './engine/measurements'
 import { chartToCsv } from './export/csv'
 import type { PageSize } from './export/pdf'
-import { download, parse, serialize, slug } from './export/project'
+import { parse, saveFile, serialize, slug } from './export/project'
 import { patternToSvg } from './export/svgDoc'
 import { useProject } from './state/store'
 
@@ -35,7 +35,7 @@ export default function App() {
           title: state.name,
           subtitle,
         })
-        download(`${fileBase}.svg`, svg, 'image/svg+xml;charset=utf-8')
+        await saveFile(`${fileBase}.svg`, svg, 'image/svg+xml;charset=utf-8')
       } else if (kind === 'pdf') {
         // jsPDF pesa bastante: se carga solo al exportar.
         const { patternToPdf } = await import('./export/pdf')
@@ -49,15 +49,15 @@ export default function App() {
           title: state.name,
           subtitle,
         })
-        doc.save(`${fileBase}-${page}.pdf`)
+        await saveFile(`${fileBase}-${page}.pdf`, doc.output('blob'), 'application/pdf')
       } else if (kind === 'csv') {
-        download(
+        await saveFile(
           `${slug(state.name)}-tabla-medidas.csv`,
           chartToCsv(state.garment, state.chart, state.unit),
           'text/csv;charset=utf-8',
         )
       } else {
-        download(
+        await saveFile(
           `${slug(state.name)}.json`,
           serialize({
             name: state.name,
