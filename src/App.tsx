@@ -164,9 +164,14 @@ export default function App() {
             <PatternCanvas
               layout={layout}
               unit={state.unit}
-              view={tab === 'chart' ? { ...state.view, showDimensions: false } : state.view}
+              view={
+                tab === 'chart'
+                  ? { ...state.view, showDimensions: false, editHandles: false }
+                  : state.view
+              }
               selected={state.selectedPiece}
               onSelect={(id) => dispatch({ type: 'selectPiece', id })}
+              onHandleDrag={(edits) => dispatch({ type: 'cells', size: state.activeSize, edits })}
             />
           )}
         </section>

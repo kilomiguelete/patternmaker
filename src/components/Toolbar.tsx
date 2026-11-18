@@ -104,6 +104,14 @@ export function Toolbar({ state, dispatch, onExport, onImport }: Props) {
             />
             Desplegar doblez
           </label>
+          <label title="Muestra los vertices del patron; al arrastrarlos se reescribe la medida que controlan">
+            <input
+              type="checkbox"
+              checked={state.view.editHandles}
+              onChange={(e) => dispatch({ type: 'view', patch: { editHandles: e.target.checked } })}
+            />
+            Editar vertices
+          </label>
         </div>
 
         <div className="actions">

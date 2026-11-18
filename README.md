@@ -25,6 +25,17 @@ piezas, las curvas, los márgenes de costura y el marcador.
 - Avisos cuando las medidas no son construibles (cuello más ancho que el hombro, copa imposible,
   muslo que no cabe en la cadera, etc.).
 
+**Edición directa sobre el patrón**
+- Activa "Editar vértices" y arrastra los puntos verdes del dibujo.
+- Cada vértice está atado a una o dos medidas: arrastrar la punta del hombro escribe
+  `ancho de hombros` y `caída de hombro`; el fondo de sisa escribe `ancho de pecho` y
+  `profundidad de sisa`; el tiro escribe `ancho de muslo`.
+- No es edición libre de nodos: el vértice **reescribe la medida**, y desde ahí se vuelve a
+  calcular todo el patrón. Así la tabla sigue siendo la única fuente de verdad, la copa de manga
+  se reajusta sola y el escalado de tallas se mantiene.
+- Arrastrando en la talla base se mueve toda la gama por el salto; arrastrando en otra talla se
+  edita sólo esa, y la celda queda marcada.
+
 **Ficha técnica**
 - Croquis plano de la prenda dibujado desde las mismas medidas, con cotas.
 

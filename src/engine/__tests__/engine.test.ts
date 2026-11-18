@@ -4,6 +4,7 @@ import { buildChart, chartColumn, defaultBaseValues, defaultGrades } from '../gr
 import { GARMENT_LIST, SIZES, type GarmentKind } from '../measurements'
 import { contourLength, flattenWithEdges, polygonArea } from '../geometry'
 import { layoutPieces, measurePiece } from '../layout'
+import { initialState, reducer } from '../../state/store'
 
 function measurementsFor(kind: GarmentKind, size: (typeof SIZES)[number] = 'M') {
   const base = defaultBaseValues(kind)
@@ -122,5 +123,80 @@ describe('validaciones', () => {
     const m = measurementsFor('tee')
     const r = draft('tee', { ...m, neckWidth: m.shoulderWidth + 10 })
     expect(r.warnings.some((w) => w.level === 'error')).toBe(true)
+  })
+})
+
+describe('edicion de la tabla', () => {
+  const start = () => initialState()
+
+  it('escribir en la talla base cambia esa talla y arrastra las demas', () => {
+    const s0 = start()
+    const s1 = reducer(s0, { type: 'cell', key: 'shoulderWidth', size: 'M', value: 600 })
+    expect(s1.chart.shoulderWidth.M).toBe(600)
+    expect(s1.chart.shoulderWidth.L).toBe(600 + s0.grades.shoulderWidth)
+    expect(s1.chart.shoulderWidth.S).toBe(600 - s0.grades.shoulderWidth)
+  })
+
+  it('escribir en otra talla solo cambia esa celda y la protege del regrade', () => {
+    const s0 = start()
+    const s1 = reducer(s0, { type: 'cell', key: 'chestWidth', size: 'XL', value: 700 })
+    expect(s1.chart.chestWidth.XL).toBe(700)
+    expect(s1.chart.chestWidth.M).toBe(s0.chart.chestWidth.M)
+
+    const s2 = reducer(s1, { type: 'cell', key: 'chestWidth', size: 'M', value: 600 })
+    expect(s2.chart.chestWidth.M).toBe(600)
+    expect(s2.chart.chestWidth.XL).toBe(700)
+  })
+
+  it('arrastrar un vertice escribe las dos medidas de golpe', () => {
+    const s0 = start()
+    const s1 = reducer(s0, {
+      type: 'cells',
+      size: 'M',
+      edits: [
+        { key: 'shoulderWidth', value: 580 },
+        { key: 'shoulderSlope', value: 60 },
+      ],
+    })
+    expect(s1.chart.shoulderWidth.M).toBe(580)
+    expect(s1.chart.shoulderSlope.M).toBe(60)
+  })
+
+  it('recorta al limite del spec en vez de romper el patron', () => {
+    const s1 = reducer(start(), { type: 'cell', key: 'neckWidth', size: 'M', value: 9999 })
+    expect(s1.chart.neckWidth.M).toBe(280)
+  })
+})
+
+describe('vertices arrastrables', () => {
+  it('cada eje vuelve a dar la medida de la que salio', () => {
+    for (const garment of GARMENT_LIST) {
+      const m = measurementsFor(garment.kind)
+      for (const piece of draft(garment.kind, m).pieces) {
+        for (const h of piece.handles ?? []) {
+          for (const [coord, axis] of [
+            [h.p.x, h.x],
+            [h.p.y, h.y],
+          ] as const) {
+            if (!axis) continue
+            const recovered = axis.scale * coord + (axis.offset ?? 0)
+            expect(
+              Math.abs(recovered - m[axis.key]),
+              `${garment.kind}/${piece.id}/${h.id} -> ${axis.key}`,
+            ).toBeLessThan(0.5)
+          }
+        }
+      }
+    }
+  })
+
+  it('las tres prendas exponen vertices', () => {
+    for (const garment of GARMENT_LIST) {
+      const total = draft(garment.kind, measurementsFor(garment.kind)).pieces.reduce(
+        (n, p) => n + (p.handles?.length ?? 0),
+        0,
+      )
+      expect(total, garment.kind).toBeGreaterThan(5)
+    }
   })
 })

@@ -7,7 +7,7 @@ import {
   smooth,
   sub,
 } from '../geometry'
-import type { Contour, Dimension, Guide, Node, Piece, Point } from '../types'
+import type { Contour, Dimension, Guide, Handle, Node, Piece, Point } from '../types'
 
 export type M = Record<string, number>
 
@@ -97,6 +97,81 @@ export function buildBodyPanel(i: BodyPanelInput): BodyPanel {
     necklineLength: pathLengthBetween(outline, 0, 1),
     points: { cfNeck, hps, sp, underarm, sideHem, cfHem },
   }
+}
+
+/**
+ * Vertices arrastrables de una media pieza de cuerpo. Cada uno reescribe la
+ * medida de la que salio, de modo que arrastrar equivale a editar la tabla.
+ *
+ * `lengthOffset` es lo que se resta al largo total para obtener el panel
+ * (el rib del bajo en una sudadera), para devolver la medida completa.
+ */
+export function bodyHandles(
+  side: 'front' | 'back',
+  panel: BodyPanel,
+  neckDropKey: string,
+  lengthOffset = 0,
+): Handle[] {
+  const { cfNeck, hps, sp, underarm, sideHem } = panel.points
+  return [
+    {
+      id: `${side}-neck-drop`,
+      label: side === 'front' ? 'Escote delantero' : 'Escote espalda',
+      p: cfNeck,
+      y: { key: neckDropKey, scale: 1 },
+    },
+    { id: `${side}-hps`, label: 'Ancho de cuello', p: hps, x: { key: 'neckWidth', scale: 2 } },
+    {
+      id: `${side}-shoulder`,
+      label: 'Hombro',
+      p: sp,
+      x: { key: 'shoulderWidth', scale: 2 },
+      y: { key: 'shoulderSlope', scale: 1 },
+    },
+    {
+      id: `${side}-underarm`,
+      label: 'Fondo de sisa',
+      p: underarm,
+      x: { key: 'chestWidth', scale: 2 },
+      y: { key: 'armholeDepth', scale: 1 },
+    },
+    {
+      id: `${side}-hem`,
+      label: 'Bajo',
+      p: sideHem,
+      x: { key: 'hemWidth', scale: 2 },
+      y: { key: 'bodyLength', scale: 1, offset: lengthOffset },
+    },
+  ]
+}
+
+/**
+ * Vertices de la manga. El alto de copa no se arrastra: lo calcula el ajuste
+ * contra la sisa, asi que solo se exponen biceps, boca y largo.
+ */
+export function sleeveHandles(opts: {
+  bicep: number
+  capHeight: number
+  opening: number
+  sleeveLength: number
+  openingOffset?: number
+  lengthOffset?: number
+}): Handle[] {
+  return [
+    {
+      id: 'sleeve-bicep',
+      label: 'Biceps',
+      p: pt(opts.bicep, opts.capHeight),
+      x: { key: 'bicep', scale: 1 },
+    },
+    {
+      id: 'sleeve-opening',
+      label: 'Boca de manga',
+      p: pt(opts.opening, opts.sleeveLength),
+      x: { key: 'sleeveOpening', scale: 1, offset: opts.openingOffset ?? 0 },
+      y: { key: 'sleeveLength', scale: 1, offset: opts.lengthOffset ?? 0 },
+    },
+  ]
 }
 
 // ------------------------------------------------------------ manga

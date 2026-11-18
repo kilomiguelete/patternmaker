@@ -63,7 +63,30 @@ export type Piece = {
   seamAllowance: number
   /** Margen especifico por tramo: clave = indice de nodo inicial del tramo. */
   seamAllowanceOverrides?: Record<number, number>
+  /** Vertices arrastrables; cada uno reescribe una o dos medidas. */
+  handles?: Handle[]
   notes?: string[]
+}
+
+/**
+ * Eje arrastrable de un vertice. Al mover el punto se reescribe la medida:
+ *   medida = scale * coordenada + offset
+ * Es la inversa del trazado, asi que la tabla sigue siendo la unica fuente
+ * de verdad y el patron se vuelve a calcular entero desde ella.
+ */
+export type HandleAxis = {
+  key: string
+  scale: number
+  offset?: number
+}
+
+/** Vertice que el usuario puede arrastrar sobre el patron. */
+export type Handle = {
+  id: string
+  label: string
+  p: Point
+  x?: HandleAxis
+  y?: HandleAxis
 }
 
 export type DraftWarning = { level: 'info' | 'warn' | 'error'; message: string }

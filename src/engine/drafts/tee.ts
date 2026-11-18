@@ -1,6 +1,16 @@
 import { pt } from '../geometry'
 import type { DraftResult, DraftWarning, Piece } from '../types'
-import { buildBodyPanel, buildSleeve, hDim, rectPiece, v, vDim, type M } from './common'
+import {
+  bodyHandles,
+  buildBodyPanel,
+  buildSleeve,
+  hDim,
+  rectPiece,
+  sleeveHandles,
+  v,
+  vDim,
+  type M,
+} from './common'
 
 export function draftTee(m: M): DraftResult {
   const warnings: DraftWarning[] = []
@@ -78,6 +88,7 @@ export function draftTee(m: M): DraftResult {
       seamAllowance: sa,
       seamAllowanceOverrides: { 4: hemAllow, 5: 0 },
       foldEdges: [5],
+      handles: bodyHandles('front', front, 'frontNeckDrop'),
       dimensions: [
         vDim('f-len', 0, 0, common.bodyLength, 'Largo total', -26),
         hDim('f-chest', common.armholeDepth + 25, 0, common.chestWidth / 2, '1/2 pecho', 18),
@@ -97,6 +108,7 @@ export function draftTee(m: M): DraftResult {
       seamAllowance: sa,
       seamAllowanceOverrides: { 4: hemAllow, 5: 0 },
       foldEdges: [5],
+      handles: bodyHandles('back', back, 'backNeckDrop'),
       dimensions: [
         vDim('b-len', 0, 0, common.bodyLength, 'Largo total', -26),
         hDim('b-chest', common.armholeDepth + 25, 0, common.chestWidth / 2, '1/2 pecho', 18),
@@ -113,6 +125,12 @@ export function draftTee(m: M): DraftResult {
       grain: 'vertical',
       seamAllowance: sa,
       seamAllowanceOverrides: { 5: sleeveHemAllow },
+      handles: sleeveHandles({
+        bicep: v(m, 'bicep'),
+        capHeight: sleeve.capHeight,
+        opening: v(m, 'sleeveOpening'),
+        sleeveLength: v(m, 'sleeveLength'),
+      }),
       guides: [
         {
           id: 'sleeve-center',

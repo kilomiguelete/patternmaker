@@ -288,3 +288,32 @@ body {
   .panel-chart, .panel-preview, .summary { grid-column: 1; }
   .canvas-wrap { min-height: 420px; }
 }
+
+/* ---------------------------------------------------------- vertices editables */
+
+.handle { cursor: grab; }
+.handle-active { cursor: grabbing; }
+.handle-hit { fill: transparent; }
+.handle-dot {
+  fill: var(--accent);
+  stroke: #0a0c0f;
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+.handle:hover .handle-dot { fill: #fff; }
+.handle-active .handle-dot { fill: #fff; }
+
+.handle-readout {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 12px var(--mono);
+  padding: 6px 12px;
+  border-radius: 7px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 4;
+}

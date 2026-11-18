@@ -1,5 +1,5 @@
 import { pathLengthBetween, pt } from '../geometry'
-import type { Contour, DraftResult, DraftWarning, Piece } from '../types'
+import type { Contour, DraftResult, DraftWarning, Handle, Piece, Point } from '../types'
 import { hDim, rectPiece, v, vDim, type M } from './common'
 
 type LegInput = {
@@ -23,7 +23,16 @@ type Leg = {
   sideLength: number
   riseLength: number
   thighWidth: number
+  /** Distancia vertical del borde de cintura al tiro, en esta pieza. */
+  riseSpan: number
   levels: { knee: number; hem: number }
+  points: {
+    waistSide: Point
+    hipSide: Point
+    crotch: Point
+    kneeIn: Point
+    hemIn: Point
+  }
 }
 
 /**
@@ -73,8 +82,64 @@ function buildLeg(i: LegInput): Leg {
     sideLength: pathLengthBetween(outline, 6, 9),
     riseLength: pathLengthBetween(outline, 1, 3),
     thighWidth: i.crotchExt + i.hipHalf,
+    riseSpan: i.rise,
     levels: { knee: kneeLevel, hem: hemLevel },
+    points: {
+      waistSide: pt(-i.waistHalf, 0),
+      hipSide: pt(-i.hipHalf, i.hipLevel),
+      crotch: pt(i.crotchExt, i.crotchLevel),
+      kneeIn: pt(kneeIn, kneeLevel),
+      hemIn: pt(hemIn, hemLevel),
+    },
   }
+}
+
+/**
+ * Vertices arrastrables de una pierna. El nivel del tiro es comun a las dos
+ * piezas, asi que el alto de cintura de cada una lleva su propio tiro.
+ */
+function legHandles(
+  side: 'front' | 'back',
+  leg: Leg,
+  o: { hipHalf: number; crotchLevel: number; waistbandHeight: number; extRatio: number },
+): Handle[] {
+  const { waistSide, hipSide, crotch, kneeIn, hemIn } = leg.points
+  const riseKey = side === 'front' ? 'frontRise' : 'backRise'
+  const centerOffset = -2 * leg.legCenter
+  return [
+    {
+      id: `${side}-waist`,
+      label: 'Cintura',
+      p: waistSide,
+      x: { key: 'waistWidth', scale: -2 },
+    },
+    {
+      id: `${side}-rise`,
+      label: side === 'front' ? 'Tiro delantero' : 'Tiro trasero',
+      p: pt(0, o.crotchLevel - leg.riseSpan),
+      y: { key: riseKey, scale: -1, offset: o.crotchLevel + o.waistbandHeight },
+    },
+    { id: `${side}-hip`, label: 'Cadera', p: hipSide, x: { key: 'hipWidth', scale: -2 } },
+    {
+      id: `${side}-crotch`,
+      label: 'Muslo',
+      p: crotch,
+      x: { key: 'thighWidth', scale: 1 / o.extRatio, offset: o.hipHalf },
+    },
+    {
+      id: `${side}-knee`,
+      label: 'Rodilla',
+      p: kneeIn,
+      x: { key: 'kneeWidth', scale: 2, offset: centerOffset },
+    },
+    {
+      id: `${side}-hem`,
+      label: 'Bajo',
+      p: hemIn,
+      x: { key: 'hemWidth', scale: 2, offset: centerOffset },
+      y: { key: 'inseam', scale: 1, offset: -o.crotchLevel },
+    },
+  ]
 }
 
 export function draftPants(m: M): DraftResult {
@@ -145,6 +210,12 @@ export function draftPants(m: M): DraftResult {
       grain: 'vertical',
       seamAllowance: sa,
       seamAllowanceOverrides: { 5: hemAllow },
+      handles: legHandles('front', front, {
+        hipHalf,
+        crotchLevel: frontRise,
+        waistbandHeight: wbH,
+        extRatio: 1,
+      }),
       guides: [
         {
           id: 'grain-front',
@@ -185,6 +256,12 @@ export function draftPants(m: M): DraftResult {
       grain: 'vertical',
       seamAllowance: sa,
       seamAllowanceOverrides: { 5: hemAllow },
+      handles: legHandles('back', back, {
+        hipHalf,
+        crotchLevel: frontRise,
+        waistbandHeight: wbH,
+        extRatio: 1.6,
+      }),
       guides: [
         {
           id: 'grain-back',

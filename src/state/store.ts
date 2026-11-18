@@ -21,6 +21,8 @@ export type ViewOptions = {
   showDimensions: boolean
   showLabels: boolean
   unfold: boolean
+  /** Mostrar y permitir arrastrar los vertices del patron. */
+  editHandles: boolean
   /** Ancho de tela del marcador, en mm. */
   sheetWidth: number
   gap: number
@@ -45,6 +47,7 @@ export type Action =
   | { type: 'size'; size: Size }
   | { type: 'name'; name: string }
   | { type: 'cell'; key: string; size: Size; value: number }
+  | { type: 'cells'; size: Size; edits: { key: string; value: number }[] }
   | { type: 'grade'; key: string; value: number }
   | { type: 'resetRow'; key: string }
   | { type: 'resetAll' }
@@ -69,6 +72,7 @@ function freshState(kind: GarmentKind, name?: string): State {
       showDimensions: true,
       showLabels: true,
       unfold: false,
+      editHandles: false,
       sheetWidth: 1500,
       gap: 30,
     },
@@ -78,6 +82,36 @@ function freshState(kind: GarmentKind, name?: string): State {
 
 export function initialState(): State {
   return freshState('tee', 'Camiseta base')
+}
+
+/**
+ * Escribe medidas en una talla.
+ *
+ * En la talla base se escribe `base`, que es de donde sale el escalado, y se
+ * LIBERA el bloqueo de esa celda: dejarla bloqueada haria que el regrade la
+ * restaurase al valor anterior y la edicion no tendria efecto. En el resto de
+ * tallas se escribe la celda y se bloquea para que el regrade la respete.
+ */
+function applyEdits(s: State, size: Size, edits: { key: string; value: number }[]): State {
+  const locked: LockedCells = { ...s.locked }
+  let base = s.base
+  let chart = s.chart
+
+  for (const edit of edits) {
+    const value = clampSpec(s.garment, edit.key, edit.value)
+    if (size === BASE_SIZE) {
+      base = { ...base, [edit.key]: value }
+      locked[edit.key] = { ...locked[edit.key] }
+      delete locked[edit.key][size]
+    } else {
+      locked[edit.key] = { ...locked[edit.key], [size]: true }
+      chart = { ...chart, [edit.key]: { ...chart[edit.key], [size]: value } }
+    }
+  }
+
+  return size === BASE_SIZE
+    ? { ...s, base, locked, chart: buildChart(s.garment, base, s.grades, chart, locked) }
+    : { ...s, chart, locked }
 }
 
 export function reducer(s: State, a: Action): State {
@@ -92,17 +126,12 @@ export function reducer(s: State, a: Action): State {
       return { ...s, activeSize: a.size }
     case 'name':
       return { ...s, name: a.name }
-    case 'cell': {
-      const value = clampSpec(s.garment, a.key, a.value)
-      const locked: LockedCells = { ...s.locked, [a.key]: { ...s.locked[a.key], [a.size]: true } }
-      if (a.size === BASE_SIZE) {
-        const base = { ...s.base, [a.key]: value }
-        const next = { ...s, base, locked }
-        return { ...next, chart: buildChart(s.garment, base, s.grades, s.chart, locked) }
-      }
-      const chart: SizeChart = { ...s.chart, [a.key]: { ...s.chart[a.key], [a.size]: value } }
-      return { ...s, chart, locked }
-    }
+    case 'cell':
+      return applyEdits(s, a.size, [{ key: a.key, value: a.value }])
+    case 'cells':
+      // Varias medidas a la vez: lo que produce arrastrar un vertice, que
+      // suele mover dos (ancho y alto) en el mismo gesto.
+      return applyEdits(s, a.size, a.edits)
     case 'grade': {
       const grades = { ...s.grades, [a.key]: a.value }
       // Al cambiar el incremento se recalcula la fila completa.

@@ -1,6 +1,16 @@
 import { pathLengthBetween, pt } from '../geometry'
 import type { Contour, DraftResult, DraftWarning, Piece } from '../types'
-import { buildBodyPanel, buildSleeve, hDim, rectPiece, v, vDim, type M } from './common'
+import {
+  bodyHandles,
+  buildBodyPanel,
+  buildSleeve,
+  hDim,
+  rectPiece,
+  sleeveHandles,
+  v,
+  vDim,
+  type M,
+} from './common'
 
 /**
  * Panel de capucha de 2 piezas: canto delantero inclinado, linea de cuello
@@ -148,6 +158,7 @@ export function draftHoodie(m: M): DraftResult {
       seamAllowance: sa,
       seamAllowanceOverrides: { 5: 0 },
       foldEdges: [5],
+      handles: bodyHandles('front', front, 'frontNeckDrop', ribH),
       guides: pocketW > 0 && pocketH > 0
         ? [
             {
@@ -184,6 +195,7 @@ export function draftHoodie(m: M): DraftResult {
       seamAllowance: sa,
       seamAllowanceOverrides: { 5: 0 },
       foldEdges: [5],
+      handles: bodyHandles('back', back, 'backNeckDrop', ribH),
       dimensions: [
         vDim('b-len', 0, 0, common.bodyLength, 'Largo panel', -26),
         hDim('b-chest', common.armholeDepth + 25, 0, common.chestWidth / 2, '1/2 pecho', 18),
@@ -198,6 +210,14 @@ export function draftHoodie(m: M): DraftResult {
       onFold: false,
       grain: 'vertical',
       seamAllowance: sa,
+      handles: sleeveHandles({
+        bicep: v(m, 'bicep'),
+        capHeight: sleeve.capHeight,
+        opening: v(m, 'sleeveOpening') + 25,
+        sleeveLength: Math.max(80, sleeveLen),
+        openingOffset: -25,
+        lengthOffset: cuffH,
+      }),
       guides: [
         { id: 'sleeve-center', label: 'Centro de manga', points: [pt(0, 0), pt(0, Math.max(80, sleeveLen))], style: 'dashed' },
         {
@@ -225,6 +245,17 @@ export function draftHoodie(m: M): DraftResult {
       onFold: false,
       grain: 'vertical',
       seamAllowance: sa,
+      handles: [
+        {
+          // La esquina del cuello de espalda lleva el ancho y el alto, asi
+          // el punto sigue al cursor en vez de quedarse clavado en (0, 0).
+          id: 'hood-back',
+          label: 'Capucha',
+          p: pt(v(m, 'hoodWidth'), v(m, 'hoodHeight')),
+          x: { key: 'hoodWidth', scale: 1 },
+          y: { key: 'hoodHeight', scale: 1 },
+        },
+      ],
       guides: v(m, 'hoodOpening') > 0
         ? [
             {
@@ -259,6 +290,15 @@ export function draftHoodie(m: M): DraftResult {
       grain: 'vertical',
       seamAllowance: sa,
       seamAllowanceOverrides: { 0: 20, 2: 20 },
+      handles: [
+        {
+          id: 'pocket-corner',
+          label: 'Bolsillo',
+          p: pt(pocketW, pocketH),
+          x: { key: 'pocketWidth', scale: 1 },
+          y: { key: 'pocketHeight', scale: 1 },
+        },
+      ],
       dimensions: [
         hDim('p-w', pocketH, 0, pocketW, 'Ancho', 24),
         vDim('p-h', pocketW, 0, pocketH, 'Alto', -22),
